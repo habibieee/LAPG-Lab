@@ -1,0 +1,57 @@
+// 1. OS METRICS
+prometheus.exporter.unix "demo" { }
+
+prometheus.scrape "demo" {
+  targets    = prometheus.exporter.unix.demo.targets
+  forward_to = [prometheus.remote_write.demo.receiver]
+}
+
+// 2. MSSQL METRICS
+prometheus.exporter.mssql "test_db" {
+  connection_string = "sqlserver://sa:Joji1dieforyou!@mssql:1433"
+}
+
+prometheus.scrape "mssql_metrics" {
+  targets    = prometheus.exporter.mssql.test_db.targets
+  forward_to = [prometheus.remote_write.demo.receiver]
+}
+
+// 3. PROMETHEUS DESTINATION
+prometheus.remote_write "demo" {
+  endpoint {
+    // UBAH: Gunakan nama service docker "prometheus" sebagai host
+    url = "http://prometheus:9090/api/v1/write"
+  }
+}
+
+// 4. LINUX LOGS
+local.file_match "linux_logs" {
+  path_targets = [
+    {"__path__" = "/var/log/syslog", "job" = "syslog"},
+    {"__path__" = "/var/log/auth.log", "job" = "auth"},
+  ]
+}
+
+loki.source.file "log_reader" {
+  targets    = local.file_match.linux_logs.targets
+  forward_to = [loki.write.central_loki.receiver]
+}
+
+// 5. LOKI DESTINATION
+loki.write "central_loki" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
+
+// 6. MSSQL LOGS
+local.file_match "mssql_logs" {
+  path_targets = [
+    {"__path__" = "/var/opt/mssql/log/errorlog*", "job" = "mssql_errorlog"},
+  ]
+}
+
+loki.source.file "mssql_log_reader" {
+  targets    = local.file_match.mssql_logs.targets
+  forward_to = [loki.write.central_loki.receiver]
+}
